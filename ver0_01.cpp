@@ -5,7 +5,7 @@ int main(){
     Mem memory;
     memory.init();
     cpu.reset(memory);
-    cpu.A = 0xBC;
+    cpu.A = 0xB4;
     cpu.Y = 0xF0;
     memory.Data[0xFFFC] = CPU::INS_AND_INDY;     
     memory.Data[0xFFFD] = 0x05;
