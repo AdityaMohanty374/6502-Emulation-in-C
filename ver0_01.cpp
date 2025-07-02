@@ -7,9 +7,9 @@ int main(){
     cpu.reset(memory);
     cpu.A = 0xB4;
     cpu.Y = 0x80;
-    memory.Data[0xFFFC] = CPU::INS_DEC_ABS;     
-    memory.Data[0xFFFD] = 0x05;
-    memory.Data[0xFFFE] = 0x70;
+    memory.Data[0xFFFC] = 0x00;     
+    memory.Data[0xFFFD] = 0x80; //PC at 0x8000
+    memory.Data[0x8000] = CPU::INS_ORA_IM;
     memory.Data[0x0015] = 0xB4; 
     // memory.Data[0x0016] = 0xAD; 
     memory.Data[0x7015] = 0xB4;

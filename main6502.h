@@ -27,12 +27,16 @@ struct Mem{
 
 struct CPU{
     Word PC;        //program counter
-    Word SP;        //stack pointer
+    Byte SP;        //stack pointer
 
-    Byte SR=0;        //Status Register
+    Byte SR;        //Status Register
     Byte A, X, Y;   //registers
 
-
+    //Status Register Org
+    /*
+      |  7  |  6  |  5  |  4  |  3  |  2  |  1  |  0  | 
+      |  N  |  V  |     |  B  |  D  |  I  |  Z  |  C  | 
+    */
     Byte C : 1;     //status flag
     Byte I : 1;
     Byte D : 1;
@@ -122,6 +126,15 @@ struct CPU{
                           INS_ADC_INDX = 0x61,
                           INS_ADC_INDY = 0x71, 
 
+                          INS_SBC_IM = 0xE9,
+                          INS_SBC_ZP = 0xE5,
+                          INS_SBC_ZPX = 0xF5,
+                          INS_SBC_ABS = 0xED,
+                          INS_SBC_ABSX = 0xFD,
+                          INS_SBC_ABSY = 0xF9,
+                          INS_SBC_INDX = 0xE1,
+                          INS_SBC_INDY = 0xF1,
+
                           INS_BCC = 0x90,
                           INS_BCS = 0xB0,
                           INS_BEQ = 0xF0,
@@ -175,6 +188,27 @@ struct CPU{
                           INS_EOR_INDX = 0x41,
                           INS_EOR_INDY = 0x51,
 
+                          INS_ORA_IM = 0x09,
+                          INS_ORA_ZP = 0x05,
+                          INS_ORA_ZPX = 0x15,
+                          INS_ORA_ABS = 0x0D,
+                          INS_ORA_ABSX = 0x1D,
+                          INS_ORA_ABSY = 0x19,
+                          INS_ORA_INDX = 0x01,
+                          INS_ORA_INDY = 0x11,
+                          
+                          INS_PHA = 0x48,
+                          INS_PHP = 0x08,
+                          INS_PLA = 0x68,
+                          INS_PLP = 0x28,
+
+                          INS_RTI = 0x40,
+                          INS_RTS = 0x60, 
+
+                          INS_SEC = 0x38,
+                          INS_SED = 0xF8,
+                          INS_SEI = 0x78,
+
                           INS_INC_ZP = 0xE6,
                           INS_INC_ZPX = 0xF6,
                           INS_INC_ABS = 0xEE,
@@ -189,26 +223,63 @@ struct CPU{
 
                           INS_NOP = 0XEA;
 
+    void reset(Mem &memory){
+        Byte low  = memory.Data[0xFFFC];
+        Byte high = memory.Data[0xFFFD];
+        PC = (high << 8) | low;
+        SP = 0xFD;
+        SR = 0x24;  //bit 5 always set with interrupt disable ie bit 2
+        C = Z = I = B = V = N = D = 0;
+        A = X = Y = 0;
+        UserBit = 0;
+        memory.init();
+    }
     void LDASetStatus(){
         Z = (A==0);
         N = (A & 0b10000000)>0;
+        SR &= ~(0x02 | 0x80);
+        if (Z) SR |= 0x02;
+        if (N) SR |= 0x80;
     }
     void LDXSetStatus(){
         Z = (X==0);
         N = (X & 0b10000000)>0;
+        SR &= ~(0x02 | 0x80);
+        if (Z) SR |= 0x02;
+        if (N) SR |= 0x80;
     }
     void LDYSetStatus(){
         Z = (Y==0);
         N = (Y & 0b10000000)>0;
+        SR &= ~(0x02 | 0x80);
+        if (Z) SR |= 0x02;
+        if (N) SR |= 0x80;
     }
     void ASLSetStatus(Byte result){
         Z = (A == 0);
         N = (result & 0b10000000)>0;
+        SR &= ~(0x02 | 0x80);
+        if (Z) SR |= 0x02;
+        if (N) SR |= 0x80;
     }
     void BITSetStatus(Byte operand){
         N = (operand>>6)&1;
         V = (operand>>5)&1;
         Z = (A&operand==0);
+        SR &= ~(0x40 | 0x02 | 0x80);
+        if (Z) SR |= 0x02;
+        if (N) SR |= 0x80;
+        if (V) SR |= 0x40;
+    }
+    void SBCSetStatus(Word Res, Byte Val){
+        C = (Res<0x100);
+        V = ((A^Val)&0x80)&((A^Res)&0x80); //if A and Val have opp signs AND If A and Res have different signs --> Overflow
+        Z = (Res == 0);
+        N = ((Res & 0x80)) != 0;
+        if(C) SR|=0x01;
+        if(V) SR|=0x40;
+        if(Z) SR|=0x02;
+        if(N) SR|=0x80;
     }
     void CMPSetStatus(Byte Value, Byte Acc) {
         Byte result = Acc - Value;
@@ -243,6 +314,29 @@ struct CPU{
         SR &= ~(0x02 | 0x80);
         if (Z) SR |= 0x02;
         if (N) SR |= 0x80;
+    }
+    void ORASetStatus(Byte Val, Byte Acc){
+        Byte Res = Acc|Val;
+        Z = (Res == 0);
+        N = (Res & 0x80) != 0;
+        SR &= ~(0x02 | 0x80);
+        if (Z) SR |= 0x02;
+        if (N) SR |= 0x80;
+    }
+    void PLASetStatus(){
+        Z = (A == 0);
+        N = (A & 0x80) != 0;
+        SR &= ~(0x02 | 0x80);
+        if (Z) SR |= 0x02;
+        if (N) SR |= 0x80;
+    }
+    void PLPSetStatus(){
+        C = (SR&0x01) != 0;
+        Z = (SR&0x02) != 0;
+        I = (SR&0x04) != 0;
+        D = (SR&0x08) != 0;
+        V = (SR&0x40) != 0;
+        N = (SR&0x80) != 0;
     }
     bool pageChange(Word value, Byte B){
         Byte LL = value & 0x00FF;
@@ -283,14 +377,7 @@ struct CPU{
         cycles--;
         return Data;
     }
-    void reset(Mem &memory){
-        PC = 0xFFFC;
-        SP = 0x00FD;
-        C = Z = I = B = V = N = D = 0;
-        A = X = Y = 0;
-        UserBit = 0;
-        memory.init();
-    }
+    
     void execute(u32 cycles, Mem &memory){
         while(cycles>0){
             Byte Ins = FetchByte(cycles, memory);
@@ -1005,6 +1092,90 @@ struct CPU{
                     LDASetStatus();
                 }
                 break;
+                //SBC
+                case INS_SBC_IM:
+                {
+                    Byte Val = FetchByte(cycles, memory);
+                    Word Res = A - Val - (1 - C);
+                    SBCSetStatus(Res ,Val); 
+                    A = Res&0xFF;
+                }
+                break;
+                case INS_SBC_ZP:
+                {
+                    Byte ZPAddr = FetchByte(cycles, memory);
+                    Byte Val = ReadByte(cycles, memory, ZPAddr);
+                    Word Res = A - Val - (1 - C);
+                    SBCSetStatus(Res ,Val); 
+                    A = Res&0xFF;
+                }
+                break;
+                case INS_SBC_ZPX:
+                {
+                    Byte ZPAddr = FetchByte(cycles, memory);
+                    ZPAddr+=X;
+                    cycles--;
+                    Byte Val = ReadByte(cycles, memory, ZPAddr);
+                    Word Res = A - Val - (1 - C);
+                    SBCSetStatus(Res ,Val); 
+                    A = Res&0xFF;
+                }
+                break;
+                case INS_SBC_ABS:
+                {
+                    Word AbsAddr = FetchWord(cycles, memory);
+                    Byte Val = ReadByte_ABS(cycles, memory, AbsAddr);
+                    Word Res = A - Val - (1 - C);
+                    SBCSetStatus(Res ,Val); 
+                    A = Res&0xFF;
+                }
+                break;
+                case INS_SBC_ABSX:
+                {
+                    Word AbsAddr = FetchWord(cycles, memory);
+                    if(pageChange(AbsAddr, X)) cycles--;
+                    AbsAddr+=X;
+                    Byte Val = ReadByte_ABS(cycles, memory, AbsAddr);
+                    Word Res = A - Val - (1 - C);
+                    SBCSetStatus(Res ,Val); 
+                    A = Res&0xFF;
+                }
+                break;
+                case INS_SBC_ABSY:
+                {
+                    Word AbsAddr = FetchWord(cycles, memory);
+                    if(pageChange(AbsAddr, Y)) cycles--;
+                    AbsAddr+=Y;
+                    Byte Val = ReadByte_ABS(cycles, memory, AbsAddr);
+                    Word Res = A - Val - (1 - C);
+                    SBCSetStatus(Res ,Val); 
+                    A = Res&0xFF;
+                }
+                break;
+                case INS_SBC_INDX:
+                {
+                    Byte ZPAddr = FetchByte(cycles, memory);
+                    ZPAddr+=X;
+                    cycles--;
+                    Word LoadAddr = FetchWord(cycles, memory);
+                    Byte Val = ReadByte_ABS(cycles, memory, LoadAddr);
+                    Word Res = A - Val - (1 - C);
+                    SBCSetStatus(Res ,Val); 
+                    A = Res&0xFF;
+                }
+                break;
+                case INS_SBC_INDY:
+                {
+                    Byte ZPAddr = FetchByte(cycles, memory);
+                    Word LoadAddr = FetchWord(cycles, memory);
+                    if(pageChange(LoadAddr, Y)) cycles--;
+                    LoadAddr+=Y;
+                    Byte Val = ReadByte_ABS(cycles, memory, LoadAddr);
+                    Word Res = A - Val - (1 - C);
+                    SBCSetStatus(Res ,Val);
+                    A = Res&0xFF;
+                }
+                break;
                 //BCC
                 case INS_BCC:
                 {
@@ -1387,6 +1558,177 @@ struct CPU{
                     Byte Val = ReadByte_ABS(cycles, memory, LoadAddr);
                     EORSetStatus(Val, A);
                     A = A^Val;
+                }
+                break;
+                //ORA
+                case INS_ORA_IM:
+                {
+                    Byte Val = FetchByte(cycles, memory);
+                    ORASetStatus(Val, A);
+                    A = A|Val;
+                }
+                break;
+                case INS_ORA_ZP:
+                {
+                    Byte ZPAddr = FetchByte(cycles, memory);
+                    Byte Val = ReadByte(cycles, memory, ZPAddr);
+                    ORASetStatus(Val, A);
+                    A = A|Val;
+                }
+                break;
+                case INS_ORA_ZPX:
+                {
+                    Byte ZPAddr = FetchByte(cycles, memory);
+                    ZPAddr+=X;
+                    cycles--;
+                    Byte Val = ReadByte(cycles, memory, ZPAddr);
+                    ORASetStatus(Val, A);
+                    A = A|Val;
+                }
+                break;
+                case INS_ORA_ABS:
+                {
+                    Word AbsAddr = FetchWord(cycles, memory);
+                    Byte Val = ReadByte_ABS(cycles, memory, AbsAddr);
+                    EORSetStatus(Val, A);
+                    A = A|Val;
+                }
+                break;
+                case INS_ORA_ABSX:
+                {
+                    Word AbsAddr = FetchWord(cycles, memory);
+                    if(pageChange(AbsAddr, X)) cycles--;
+                    AbsAddr+=X;
+                    Byte Val = ReadByte_ABS(cycles, memory, AbsAddr);
+                    ORASetStatus(Val, A);
+                    A = A|Val;
+                }
+                break;
+                case INS_ORA_ABSY:
+                {
+                    Word AbsAddr = FetchWord(cycles, memory);
+                    if(pageChange(AbsAddr, Y)) cycles--;
+                    AbsAddr+=Y;
+                    Byte Val = ReadByte_ABS(cycles, memory, AbsAddr);
+                    EORSetStatus(Val, A);
+                    A = A|Val;
+                }
+                break;
+                case INS_ORA_INDX:
+                {
+                    Byte ZPAddr = FetchByte(cycles, memory);
+                    ZPAddr+=X;
+                    cycles--;
+                    Word LoadAddr = ReadWord(cycles, memory, ZPAddr);
+                    Byte Val = ReadByte_ABS(cycles, memory, LoadAddr);
+                    EORSetStatus(Val, A);
+                    A = A|Val;
+                }
+                break;
+                case INS_ORA_INDY:
+                {
+                    Byte ZPAddr = FetchByte(cycles, memory);
+                    Word LoadAddr = ReadWord(cycles, memory, ZPAddr);
+                    if(pageChange(LoadAddr, Y)) cycles--;
+                    LoadAddr+=Y;
+                    Byte Val = ReadByte_ABS(cycles, memory, LoadAddr);
+                    EORSetStatus(Val, A);
+                    A = A|Val;
+                }
+                break;
+                //PHA
+                case INS_PHA:
+                {
+                    memory.Data[0x0100+SP] = A;
+                    cycles--;
+                    SP--;
+                    cycles--;
+                }
+                break;
+                //PHP
+                case INS_PHP:
+                {
+                    memory.Data[0x0100+SP] = SR;
+                    cycles--;
+                    SP--;
+                    cycles--;
+                }
+                break;
+                //PLA
+                case INS_PLA:
+                {
+                    SP++;
+                    cycles--;
+                    A = memory.Data[0x0100+SP];
+                    cycles--;
+                    PLASetStatus();
+                    cycles--;
+                }
+                break;
+                //PLP
+                case INS_PLP:
+                {
+                    SP++;
+                    cycles--;
+                    SR = memory.Data[0x0100+SP]|0x20;
+                    cycles--;
+                    PLPSetStatus();
+                    cycles--;
+                }
+                break;
+                //RTI
+                case INS_RTI:
+                {
+                    cycles--; //dummy, consumed internally reading op
+                    SP++;
+                    cycles--;
+                    SR = memory.Data[0x0100+SP]|0x20;
+                    PLPSetStatus();
+                    cycles--;
+                    SP++;
+                    cycles--;
+                    PC = memory.Data[0x0100+SP]; //low byte
+                    SP++;
+                    PC = (memory.Data[0x0100+SP]<<8)|PC; //high and low byte
+                    cycles--;
+                }
+                break;
+                case INS_RTS:
+                {
+                    SP++;
+                    cycles--;
+                    PC = memory.Data[0x0100+SP];//low byte
+                    cycles--;
+                    SP++;
+                    cycles--;
+                    PC = (memory.Data[0x0100+SP]<<8)|PC;//high with low byte
+                    cycles--;
+                    PC = PC+1;
+                    cycles--;
+                }
+                break;
+                //SEC
+                case INS_SEC:
+                {
+                    SR |= 0x01;
+                    C = 1;
+                    cycles--;
+                }
+                break;
+                //SED
+                case INS_SED:
+                {
+                    SR |= 0x08;
+                    D = 1;
+                    cycles--;
+                }
+                break;
+                //SEI
+                case INS_SEI:
+                {
+                    SR |= 0x04;
+                    I = 1;
+                    cycles--;
                 }
                 break;
                 //INC
