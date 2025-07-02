@@ -76,6 +76,11 @@ struct CPU{
                           INS_STA_INDX = 0x81,
                           INS_STA_INDY = 0x91,
 
+                          INS_TAX = 0xAA,
+                          INS_TAY = 0xA8,
+                          INS_TSX = 0xBA,
+                          INS_TXA = 0x8A,
+
                           INS_STX_ZP = 0x86,
                           INS_STX_ZPY = 0x96,
                           INS_STX_ABS = 0x8E,
@@ -626,6 +631,53 @@ struct CPU{
                 {
                     Word AbsAddr = FetchWord(cycles, memory);
                     memory.WriteByte(Y, AbsAddr, cycles);
+                }
+                break;
+                //TAX
+                case INS_TAX:
+                {
+                    X = A&0xFF;
+                    cycles--;
+                    Z = (X==0);
+                    N = (X&0x80)!=0;
+                    SR &= ~(0x82);
+                    if (Z) SR |= 0x02;
+                    if (N) SR |= 0x80;
+                }
+                break;
+                //TAY
+                case INS_TAY:
+                {
+                    Y = A&0xFF;
+                    cycles--;
+                    Z = (Y==0);
+                    N = (Y&0x80)!=0;
+                    SR &= ~(0x82);
+                    if (Z) SR |= 0x02;
+                    if (N) SR |= 0x80;
+                }
+                break;
+                //TSX
+                case INS_TSX:
+                {
+                    X = SP;
+                    Z = (X == 0);
+                    N = (X & 0x80) != 0;
+                    SR &= ~(0x82);
+                    if (Z) SR |= 0x02;
+                    if (N) SR |= 0x80;
+                    cycles--;
+                }
+                break;
+                case INS_TXA:
+                {
+                    A = X&0xFF;
+                    cycles--;
+                    Z = (A==0);
+                    N = (A&0x80)!=0;
+                    SR &= ~(0x82);
+                    if (Z) SR |= 0x02;
+                    if (N) SR |= 0x80;
                 }
                 break;
                 //ASL
