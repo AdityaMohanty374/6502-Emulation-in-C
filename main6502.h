@@ -29,7 +29,7 @@ struct CPU{
     Word PC;        //program counter
     Word SP;        //stack pointer
 
-    Byte SR;        //Status Register
+    Byte SR=0;        //Status Register
     Byte A, X, Y;   //registers
 
 
@@ -210,47 +210,39 @@ struct CPU{
         V = (operand>>5)&1;
         Z = (A&operand==0);
     }
-    void CMPSetStatus(Byte Value, Byte Acc){
-        if(Acc>=Value){
-            SR |= 0x01;
-            C = 1;
-            }else if(Acc==Value){
-            SR |= 0x02;
-            Z = 1;
-        }else if(((Acc-Value)>>7)&1){
-            N = 1;
-            SR |= 0x80;
-        }
+    void CMPSetStatus(Byte Value, Byte Acc) {
+        Byte result = Acc - Value;
+        C = (Acc >= Value);
+        Z = (Acc == Value);
+        N = (result & 0x80) != 0;
+        SR &= ~(0x01 | 0x02 | 0x80);
+        if (C) SR |= 0x01;
+        if (Z) SR |= 0x02;
+        if (N) SR |= 0x80;
     }
     void DECSetStatus(Byte Val){
-        if(((Val-1)>>7)&1){
-            SR |= 0x80;
-            N == 1;
-        }else if((Val-1)==0){
-            SR |= 0x02;
-            Z = 1;
-        }
-        Val-=1;
+        Byte Res = Val-1;
+        N = (Res & 0x80)!=0;
+        Z = (Res==0);
+        SR &= ~(0x02 | 0x80);
+        if (Z) SR |= 0x02;
+        if (N) SR |= 0x80;
     }
     void INCSetStatus(Byte Val){
-        if(((Val+1)>>7)&1){
-            SR |= 0x80;
-            N == 1;
-        }else if((Val+1)==0){
-            SR |= 0x02;
-            Z = 1;
-        }
-        Val+=1;
+        Byte Res = Val+1;
+        N = (Res & 0x80)!=0;
+        Z = (Res==0);
+        SR &= ~(0x02 | 0x80);
+        if (Z) SR |= 0x02;
+        if (N) SR |= 0x80;
     }
     void EORSetStatus(Byte Val, Byte Acc){
-        if(((Acc^Val)>>7)&1){
-            SR |= 0x80;
-            N = 1;
-        }else if((Acc^Val)==0){
-            SR |= 0x02;
-            Z = 1;
-        }
-        Acc = Acc^Val;
+        Byte Res = Acc^Val;
+        Z = (Acc == Val);
+        N = (Res & 0x80) != 0;
+        SR &= ~(0x02 | 0x80);
+        if (Z) SR |= 0x02;
+        if (N) SR |= 0x80;
     }
     bool pageChange(Word value, Byte B){
         Byte LL = value & 0x00FF;
@@ -1256,6 +1248,7 @@ struct CPU{
                     Byte ZPAddr = FetchByte(cycles, memory);
                     Byte Val = ReadByte(cycles, memory, ZPAddr);
                     DECSetStatus(Val);
+                    Val-=1;
                     cycles--;
                     memory.WriteByte(Val, ZPAddr, cycles);
                 }
@@ -1267,6 +1260,7 @@ struct CPU{
                     cycles--;
                     Byte Val = ReadByte(cycles, memory, ZPAddr);
                     DECSetStatus(Val);
+                    Val-=1;
                     cycles--;
                     memory.WriteByte(Val, ZPAddr, cycles);
                 }
@@ -1274,8 +1268,9 @@ struct CPU{
                 case INS_DEC_ABS:
                 {
                     Word AbsAddr = FetchWord(cycles, memory);
-                    Byte Val = ReadByte(cycles, memory, AbsAddr);
+                    Byte Val = ReadByte_ABS(cycles, memory, AbsAddr);
                     DECSetStatus(Val);
+                    Val -= 1;
                     cycles--;
                     memory.WriteByte(Val, AbsAddr, cycles);
                 }
@@ -1285,8 +1280,9 @@ struct CPU{
                     Word AbsAddr = FetchWord(cycles, memory);
                     AbsAddr+=X;
                     cycles--;
-                    Byte Val = ReadByte(cycles, memory, AbsAddr);
+                    Byte Val = ReadByte_ABS(cycles, memory, AbsAddr);
                     DECSetStatus(Val);
+                    Val-=1;
                     cycles--;
                     memory.WriteByte(Val, AbsAddr, cycles);
                 }
@@ -1294,27 +1290,26 @@ struct CPU{
                 //DECX
                 case INS_DEX:
                 {
-                    if(((X-1)>>7)&1){
-                        SR |= 0x80;
-                        N = 1;
-                    }else if((X-1)==0){
-                        SR |= 0x02;
-                        Z = 1;
-                    }
-                    X-=1;
+                    Byte Res = X-1;
+                    N = (Res & 0x80)!=0;
+                    Z = (Res==0);
+                    SR &= ~(0x02 | 0x80);
+                    if (Z) SR |= 0x02;
+                    if (N) SR |= 0x80;
+                    X = Res;
                     cycles--;
                 } 
                 break;
+                //DEY
                 case INS_DEY:
                 {
-                    if(((Y-1)>>7)&1){
-                        SR |= 0x80;
-                        N = 1;
-                    }else if((Y-1)==0){
-                        SR |= 0x02;
-                        Z = 1;
-                    }
-                    Y-=1;
+                    Byte Res = Y-1;
+                    N = (Res & 0x80)!=0;
+                    Z = (Res==0);
+                    SR &= ~(0x02 | 0x80);
+                    if (Z) SR |= 0x02;
+                    if (N) SR |= 0x80;
+                    Y = Res;
                     cycles--;
                 } 
                 break;
@@ -1323,6 +1318,7 @@ struct CPU{
                 {
                     Byte Val = FetchByte(cycles, memory);
                     EORSetStatus(Val, A);
+                    A = A^Val;
                 }
                 break;
                 case INS_EOR_ZP:
@@ -1330,6 +1326,7 @@ struct CPU{
                     Byte ZPAddr = FetchByte(cycles, memory);
                     Byte Val = ReadByte(cycles, memory, ZPAddr);
                     EORSetStatus(Val, A);
+                    A = A^Val;
                 }
                 break;
                 case INS_EOR_ZPX:
@@ -1339,6 +1336,7 @@ struct CPU{
                     cycles--;
                     Byte Val = ReadByte(cycles, memory, ZPAddr);
                     EORSetStatus(Val, A);
+                    A = A^Val;
                 }
                 break;
                 case INS_EOR_ABS:
@@ -1346,6 +1344,7 @@ struct CPU{
                     Word AbsAddr = FetchWord(cycles, memory);
                     Byte Val = ReadByte_ABS(cycles, memory, AbsAddr);
                     EORSetStatus(Val, A);
+                    A = A^Val;
                 }
                 break;
                 case INS_EOR_ABSX:
@@ -1355,6 +1354,7 @@ struct CPU{
                     AbsAddr+=X;
                     Byte Val = ReadByte_ABS(cycles, memory, AbsAddr);
                     EORSetStatus(Val, A);
+                    A = A^Val;
                 }
                 break;
                 case INS_EOR_ABSY:
@@ -1364,6 +1364,7 @@ struct CPU{
                     AbsAddr+=Y;
                     Byte Val = ReadByte_ABS(cycles, memory, AbsAddr);
                     EORSetStatus(Val, A);
+                    A = A^Val;
                 }
                 break;
                 case INS_EOR_INDX:
@@ -1374,6 +1375,7 @@ struct CPU{
                     Word LoadAddr = ReadWord(cycles, memory, ZPAddr);
                     Byte Val = ReadByte_ABS(cycles, memory, LoadAddr);
                     EORSetStatus(Val, A);
+                    A = A^Val;
                 }
                 break;
                 case INS_EOR_INDY:
@@ -1384,6 +1386,7 @@ struct CPU{
                     LoadAddr+=Y;
                     Byte Val = ReadByte_ABS(cycles, memory, LoadAddr);
                     EORSetStatus(Val, A);
+                    A = A^Val;
                 }
                 break;
                 //INC
@@ -1392,6 +1395,7 @@ struct CPU{
                     Byte ZPAddr = FetchByte(cycles, memory);
                     Byte Val = ReadByte(cycles, memory, ZPAddr);
                     INCSetStatus(Val);
+                    Val+=1;
                     cycles--;
                     memory.WriteByte(Val, ZPAddr, cycles);
                 }
@@ -1403,6 +1407,7 @@ struct CPU{
                     cycles--;
                     Byte Val = ReadByte(cycles, memory, ZPAddr);
                     INCSetStatus(Val);
+                    Val+=1;
                     cycles--;
                     memory.WriteByte(Val, ZPAddr, cycles);
                 }
@@ -1410,8 +1415,9 @@ struct CPU{
                 case INS_INC_ABS:
                 {
                     Word AbsAddr = FetchWord(cycles, memory);
-                    Byte Val = ReadByte(cycles, memory, AbsAddr);
+                    Byte Val = ReadByte_ABS(cycles, memory, AbsAddr);
                     INCSetStatus(Val);
+                    Val+=1;
                     cycles--;
                     memory.WriteByte(Val, AbsAddr, cycles);
                 }
@@ -1421,8 +1427,9 @@ struct CPU{
                     Word AbsAddr = FetchWord(cycles, memory);
                     AbsAddr+=X;
                     cycles--;
-                    Byte Val = ReadByte(cycles, memory, AbsAddr);
+                    Byte Val = ReadByte_ABS(cycles, memory, AbsAddr);
                     INCSetStatus(Val);
+                    Val+=1;
                     cycles--;
                     memory.WriteByte(Val, AbsAddr, cycles);
                 }
@@ -1430,28 +1437,26 @@ struct CPU{
                 //INX
                 case INS_INX:
                 {
-                    if(((X+1)>>7)&1){
-                        SR |= 0x80;
-                        N = 1;
-                    }else if((X+1)==0){
-                        SR |= 0x02;
-                        Z = 1;
-                    }
-                    X+=1;
+                    Byte Res = X+1;
+                    N = (Res & 0x80)!=0;
+                    Z = (Res==0);
+                    SR &= ~(0x02 | 0x80);
+                    if (Z) SR |= 0x02;
+                    if (N) SR |= 0x80;
+                    X = Res;
                     cycles--;
                 } 
                 break;
                 //INY
                 case INS_INY:
                 {
-                    if(((Y+1)>>7)&1){
-                        SR |= 0x80;
-                        N = 1;
-                    }else if((Y+1)==0){
-                        SR |= 0x02;
-                        Z = 1;
-                    }
-                    Y+=1;
+                    Byte Res = Y+1;
+                    N = (Res & 0x80)!=0;
+                    Z = (Res==0);
+                    SR &= ~(0x02 | 0x80);
+                    if (Z) SR |= 0x02;
+                    if (N) SR |= 0x80;
+                    Y = Res;
                     cycles--;
                 } 
                 break;
