@@ -1,4 +1,4 @@
- [*6502 Emulation in C*]
+ ##*6502 Emulation in C*
 
 A minimal, highly portable emulator for the MOS Technology 6502 CPU written in C.
 
