@@ -232,7 +232,7 @@ struct CPU{
         Byte low  = memory.Data[0xFFFC];
         Byte high = memory.Data[0xFFFD];
         PC = (high << 8) | low;
-        SP = 0xFD;
+        SP = 0xF0; // should be 0xFD on hardware
         SR = 0x24;  //bit 5 always set with interrupt disable ie bit 2
         C = Z = I = B = V = N = D = 0;
         A = X = Y = 0;
@@ -277,7 +277,7 @@ struct CPU{
         if (V) SR |= 0x40;
     }
     void SBCSetStatus(Word Res, Byte Val){
-        C = (Res<0x100);
+        C = (Res<0x100); // no borrow occured
         V = ((A^Val)&0x80)&((A^Res)&0x80); //if A and Val have opp signs AND If A and Res have different signs --> Overflow
         Z = (Res == 0);
         N = ((Res & 0x80)) != 0;
@@ -1209,7 +1209,7 @@ struct CPU{
                     Byte ZPAddr = FetchByte(cycles, memory);
                     ZPAddr+=X;
                     cycles--;
-                    Word LoadAddr = FetchWord(cycles, memory);
+                    Word LoadAddr = ReadWord(cycles, memory, ZPAddr);
                     Byte Val = ReadByte_ABS(cycles, memory, LoadAddr);
                     Word Res = A - Val - (1 - C);
                     SBCSetStatus(Res ,Val); 
@@ -1219,7 +1219,7 @@ struct CPU{
                 case INS_SBC_INDY:
                 {
                     Byte ZPAddr = FetchByte(cycles, memory);
-                    Word LoadAddr = FetchWord(cycles, memory);
+                    Word LoadAddr = ReadWord(cycles, memory, ZPAddr);
                     if(pageChange(LoadAddr, Y)) cycles--;
                     LoadAddr+=Y;
                     Byte Val = ReadByte_ABS(cycles, memory, LoadAddr);
@@ -1734,14 +1734,14 @@ struct CPU{
                     cycles--; //dummy, consumed internally reading op
                     SP++;
                     cycles--;
-                    SR = memory.Data[0x0100+SP]|0x20;
+                    SR = (memory.Data[0x0100+SP]|0x24);
                     PLPSetStatus();
                     cycles--;
                     SP++;
                     cycles--;
                     PC = memory.Data[0x0100+SP]; //low byte
                     SP++;
-                    PC = (memory.Data[0x0100+SP]<<8)|PC; //high and low byte
+                    PC = (memory.Data[0x0100+SP]<<8)|PC; //high byte n low
                     cycles--;
                 }
                 break;
